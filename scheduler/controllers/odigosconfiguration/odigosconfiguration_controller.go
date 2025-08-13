@@ -40,14 +40,22 @@ type odigosConfigurationController struct {
 	DynamicClient *dynamic.DynamicClient
 }
 
-func (r *odigosConfigurationController) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
-	odigosConfigMap, err := r.getOdigosConfigMap(ctx)
+func (r *odigosConfigurationController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// Use the namespace from the request instead of env.GetCurrentNamespace()
+	// This ensures we're operating in the same namespace as the triggering object
+	odigosNs := req.Namespace
+	if odigosNs == "" {
+		// Fallback to environment variable if namespace is not in request
+		odigosNs = env.GetCurrentNamespace()
+	}
+
+	odigosConfigMap, err := r.getOdigosConfigMap(ctx, odigosNs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	odigosDeployment := corev1.ConfigMap{}
-	err = r.Client.Get(ctx, types.NamespacedName{Namespace: env.GetCurrentNamespace(), Name: k8sconsts.OdigosDeploymentConfigMapName}, &odigosDeployment)
+	err = r.Client.Get(ctx, types.NamespacedName{Namespace: odigosNs, Name: k8sconsts.OdigosDeploymentConfigMapName}, &odigosDeployment)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -74,14 +82,14 @@ func (r *odigosConfigurationController) Reconcile(ctx context.Context, _ ctrl.Re
 	effectiveProfiles := calculateEffectiveProfiles(allProfiles, availableProfiles)
 
 	// apply the current profiles list to the cluster
-	err = r.applyProfileManifests(ctx, effectiveProfiles)
+	err = r.applyProfileManifests(ctx, effectiveProfiles, odigosNs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// make sure the default ignored namespaces are always present
 	odigosConfiguration.IgnoredNamespaces = mergeIgnoredItemLists(odigosConfiguration.IgnoredNamespaces, k8sconsts.DefaultIgnoredNamespaces)
-	odigosConfiguration.IgnoredNamespaces = append(odigosConfiguration.IgnoredNamespaces, env.GetCurrentNamespace())
+	odigosConfiguration.IgnoredNamespaces = append(odigosConfiguration.IgnoredNamespaces, odigosNs)
 
 	// make sure the default ignored containers are always present
 	odigosConfiguration.IgnoredContainers = mergeIgnoredItemLists(odigosConfiguration.IgnoredContainers, k8sconsts.DefaultIgnoredContainers)
@@ -100,12 +108,12 @@ func (r *odigosConfigurationController) Reconcile(ctx context.Context, _ ctrl.Re
 	resolveEnvInjectionMethod(&odigosConfiguration)
 
 	// Handle the Go offsets CronJob
-	err = r.handleGoOffsetsCronJob(ctx, &odigosConfiguration, env.GetCurrentNamespace())
+	err = r.handleGoOffsetsCronJob(ctx, &odigosConfiguration, odigosNs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.persistEffectiveConfig(ctx, &odigosConfiguration, odigosConfigMap)
+	err = r.persistEffectiveConfig(ctx, &odigosConfiguration, odigosConfigMap, odigosNs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -113,13 +121,12 @@ func (r *odigosConfigurationController) Reconcile(ctx context.Context, _ ctrl.Re
 	return ctrl.Result{}, nil
 }
 
-func (r *odigosConfigurationController) getOdigosConfigMap(ctx context.Context) (*corev1.ConfigMap, error) {
+func (r *odigosConfigurationController) getOdigosConfigMap(ctx context.Context, namespace string) (*corev1.ConfigMap, error) {
 	var configMap corev1.ConfigMap
-	odigosNs := env.GetCurrentNamespace()
 
 	// read current content in odigos-configuration, which is the content supplied by the user.
 	// this is the baseline for reconciling, without defaults and profiles applied.
-	err := r.Client.Get(ctx, types.NamespacedName{Namespace: odigosNs, Name: consts.OdigosConfigurationName}, &configMap)
+	err := r.Client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: consts.OdigosConfigurationName}, &configMap)
 	if err != nil {
 		return nil, err
 	}
@@ -127,9 +134,7 @@ func (r *odigosConfigurationController) getOdigosConfigMap(ctx context.Context) 
 	return &configMap, nil
 }
 
-func (r *odigosConfigurationController) persistEffectiveConfig(ctx context.Context, effectiveConfig *common.OdigosConfiguration, owner *corev1.ConfigMap) error {
-	odigosNs := env.GetCurrentNamespace()
-
+func (r *odigosConfigurationController) persistEffectiveConfig(ctx context.Context, effectiveConfig *common.OdigosConfiguration, owner *corev1.ConfigMap, namespace string) error {
 	// apply patch the OdigosEffectiveConfigName configmap with the effective configuration
 	// this is the configuration after applying defaults and profiles.
 
@@ -144,7 +149,7 @@ func (r *odigosConfigurationController) persistEffectiveConfig(ctx context.Conte
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: odigosNs,
+			Namespace: namespace,
 			Name:      consts.OdigosEffectiveConfigName,
 		},
 		Data: map[string]string{
@@ -292,7 +297,7 @@ func applyCronJob(ctx context.Context, kubeClient client.Client, ns string, cron
 	return nil
 }
 
-func (r *odigosConfigurationController) applyProfileManifests(ctx context.Context, effectiveProfiles []common.ProfileName) error {
+func (r *odigosConfigurationController) applyProfileManifests(ctx context.Context, effectiveProfiles []common.ProfileName, namespace string) error {
 
 	profileDeploymentHash := calculateProfilesDeploymentHash(effectiveProfiles, r.OdigosVersion)
 
@@ -304,7 +309,7 @@ func (r *odigosConfigurationController) applyProfileManifests(ctx context.Contex
 		}
 
 		for _, yamlBytes := range yamls {
-			err = r.applySingleProfileManifest(ctx, profileName, yamlBytes, profileDeploymentHash)
+			err = r.applySingleProfileManifest(ctx, profileName, yamlBytes, profileDeploymentHash, namespace)
 			if err != nil {
 				return err
 			}
@@ -317,7 +322,7 @@ func (r *odigosConfigurationController) applyProfileManifests(ctx context.Contex
 	differentHashSelector, _ := labels.NewRequirement(k8sconsts.OdigosProfilesHashLabel, selection.NotEquals, []string{profileDeploymentHash})
 	managedByProfileSelector, _ := labels.NewRequirement(k8sconsts.OdigosProfilesManagedByLabel, selection.Equals, []string{k8sconsts.OdigosProfilesManagedByValue})
 	differentHashLabelSelector := labels.NewSelector().Add(*differentHashSelector, *managedByProfileSelector)
-	listOptions := &client.ListOptions{LabelSelector: differentHashLabelSelector, Namespace: env.GetCurrentNamespace()}
+	listOptions := &client.ListOptions{LabelSelector: differentHashLabelSelector, Namespace: namespace}
 
 	processesList := odigosv1alpha1.ProcessorList{}
 	err := r.Client.List(ctx, &processesList, listOptions)
@@ -360,7 +365,8 @@ func (r *odigosConfigurationController) applyProfileManifests(ctx context.Contex
 	return nil
 }
 
-func (r *odigosConfigurationController) applySingleProfileManifest(ctx context.Context, profileName common.ProfileName, yamlBytes []byte, profileDeploymentHash string) error {
+func (r *odigosConfigurationController) applySingleProfileManifest(ctx context.Context, profileName common.ProfileName, yamlBytes []byte, profileDeploymentHash string, namespace string) error {
+
 	obj := &unstructured.Unstructured{}
 	err := yaml.Unmarshal(yamlBytes, obj)
 	if err != nil {
@@ -393,7 +399,7 @@ func (r *odigosConfigurationController) applySingleProfileManifest(ctx context.C
 		Resource: resource,
 	}
 
-	resourceClient := r.DynamicClient.Resource(gvr).Namespace(env.GetCurrentNamespace())
+	resourceClient := r.DynamicClient.Resource(gvr).Namespace(namespace)
 	_, err = resourceClient.Apply(ctx, obj.GetName(), obj, metav1.ApplyOptions{
 		FieldManager: "scheduler-odigosconfiguration",
 		Force:        true,
