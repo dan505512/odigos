@@ -45,7 +45,12 @@ type K8sLabelAttribute struct {
 	// e.g. "pod" or "namespace"
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=pod
+	// Deprecated: Use FromSources instead to support multiple sources
 	From *K8sAttributeSource `json:"from,omitempty"`
+	// The sources of the label. Allows extracting the same label from multiple sources (e.g., both pod and namespace).
+	// If empty and From is not set, defaults to ["pod"].
+	// +kubebuilder:validation:Optional
+	FromSources []K8sAttributeSource `json:"fromSources,omitempty"`
 }
 
 type K8sAnnotationAttribute struct {
@@ -61,7 +66,12 @@ type K8sAnnotationAttribute struct {
 	// e.g. "pod" or "namespace"
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=pod
+	// Deprecated: Use FromSources instead to support multiple sources
 	From *string `json:"from,omitempty"`
+	// The sources of the annotation. Allows extracting the same annotation from multiple sources (e.g., both pod and namespace).
+	// If empty and From is not set, defaults to ["pod"].
+	// +kubebuilder:validation:Optional
+	FromSources []K8sAttributeSource `json:"fromSources,omitempty"`
 }
 
 type K8sAttributesConfig struct {

@@ -188,8 +188,8 @@ func k8sAttributeConfig(ctx context.Context, k8sclient client.Client, namespace 
 
 	var (
 		metadataAttributes   []string
-		labelAttributes      = make(map[string]k8sTagAttribute)
-		annotationAttributes = make(map[string]k8sTagAttribute)
+		labelAttributes      []k8sTagAttribute
+		annotationAttributes []k8sTagAttribute
 		signals              = map[common.ObservabilitySignal]struct{}{}
 		ownerReferences      = []metav1.OwnerReference{}
 		collectContainer     = false
@@ -217,29 +217,48 @@ func k8sAttributeConfig(ctx context.Context, k8sclient client.Client, namespace 
 		collectContainer = collectContainer || config.CollectContainerAttributes
 		collectClusterUID = collectClusterUID || config.CollectClusterUID
 
-		// Add label attributes, newer configs override older ones with same Tag
+		// Add label attributes, supporting multiple sources per label
 		for _, label := range config.LabelsAttributes {
-			from := actionv1.PodAttributeSource
-			if label.From != nil {
-				from = actionv1.K8sAttributeSource(*label.From)
+			// Determine sources: use FromSources if set, otherwise fall back to From for backward compatibility, default to pod
+			var sources []actionv1.K8sAttributeSource
+			if len(label.FromSources) > 0 {
+				sources = label.FromSources
+			} else if label.From != nil {
+				sources = []actionv1.K8sAttributeSource{actionv1.K8sAttributeSource(*label.From)}
+			} else {
+				sources = []actionv1.K8sAttributeSource{actionv1.PodAttributeSource}
 			}
-			labelAttributes[label.LabelKey] = k8sTagAttribute{
-				Tag:  label.AttributeKey,
-				Key:  label.LabelKey,
-				From: string(from),
+
+			// Create one entry per source
+			for _, source := range sources {
+				labelAttributes = append(labelAttributes, k8sTagAttribute{
+					Tag:  label.AttributeKey,
+					Key:  label.LabelKey,
+					From: string(source),
+				})
 			}
 		}
 
-		// Add annotation attributes, newer configs override older ones with same Tag
+		// Add annotation attributes, supporting multiple sources per annotation
 		for _, annotation := range config.AnnotationsAttributes {
-			from := actionv1.PodAttributeSource
-			if annotation.From != nil {
-				from = actionv1.K8sAttributeSource(*annotation.From)
+			// Determine sources: use FromSources if set, otherwise fall back to From for backward compatibility, default to pod
+			var sources []actionv1.K8sAttributeSource
+			if len(annotation.FromSources) > 0 {
+				sources = annotation.FromSources
+			} else if annotation.From != nil {
+				// Convert string to K8sAttributeSource
+				sources = []actionv1.K8sAttributeSource{actionv1.K8sAttributeSource(*annotation.From)}
+			} else {
+				sources = []actionv1.K8sAttributeSource{actionv1.PodAttributeSource}
 			}
-			annotationAttributes[annotation.AnnotationKey] = k8sTagAttribute{
-				Tag:  annotation.AttributeKey,
-				Key:  annotation.AnnotationKey,
-				From: string(from),
+
+			// Create one entry per source
+			for _, source := range sources {
+				annotationAttributes = append(annotationAttributes, k8sTagAttribute{
+					Tag:  annotation.AttributeKey,
+					Key:  annotation.AnnotationKey,
+					From: string(source),
+				})
 			}
 		}
 
@@ -257,17 +276,6 @@ func k8sAttributeConfig(ctx context.Context, k8sclient client.Client, namespace 
 		metadataAttributes = append(metadataAttributes, string(semconv.K8SClusterUIDKey))
 	}
 
-	// Convert maps back to slices
-	var labelAttrs []k8sTagAttribute
-	for _, attr := range labelAttributes {
-		labelAttrs = append(labelAttrs, attr)
-	}
-
-	var annotationAttrs []k8sTagAttribute
-	for _, attr := range annotationAttributes {
-		annotationAttrs = append(annotationAttrs, attr)
-	}
-
 	if len(metadataAttributes) == 0 {
 		// when metadata attributes are not set, the collector will take the default
 		// attributes for extract.metadata with k8s.deployment.name which can be very expensive.
@@ -283,8 +291,8 @@ func k8sAttributeConfig(ctx context.Context, k8sclient client.Client, namespace 
 		},
 		Extract: k8sAttributeExtract{
 			MetadataAttributes:   metadataAttributes,
-			LabelAttributes:      labelAttrs,
-			AnnotationAttributes: annotationAttrs,
+			LabelAttributes:      labelAttributes,
+			AnnotationAttributes: annotationAttributes,
 		},
 		PodAssociation: k8sAttributesPodsAssociation{
 			{

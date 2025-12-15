@@ -65,7 +65,18 @@ spec:
                       description: |-
                         The source of the annotation.
                         e.g. "pod" or "namespace"
+                        Deprecated: Use FromSources instead to support multiple sources
                       type: string
+                    fromSources:
+                      description: |-
+                        The sources of the annotation. Allows extracting the same annotation from multiple sources (e.g., both pod and namespace).
+                        If empty and From is not set, defaults to ["pod"].
+                      items:
+                        enum:
+                        - pod
+                        - namespace
+                        type: string
+                      type: array
                   required:
                   - annotationKey
                   - attributeKey
@@ -117,10 +128,21 @@ spec:
                       description: |-
                         The source of the label.
                         e.g. "pod" or "namespace"
+                        Deprecated: Use FromSources instead to support multiple sources
                       enum:
                       - pod
                       - namespace
                       type: string
+                    fromSources:
+                      description: |-
+                        The sources of the label. Allows extracting the same label from multiple sources (e.g., both pod and namespace).
+                        If empty and From is not set, defaults to ["pod"].
+                      items:
+                        enum:
+                        - pod
+                        - namespace
+                        type: string
+                      type: array
                     labelKey:
                       description: |-
                         The label name to be extracted from the pod.

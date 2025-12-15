@@ -525,15 +525,17 @@ type K8sActualSource struct {
 }
 
 type K8sAnnotationAttribute struct {
-	AnnotationKey string             `json:"annotationKey"`
-	AttributeKey  string             `json:"attributeKey"`
-	From          *K8sAttributesFrom `json:"from,omitempty"`
+	AnnotationKey string              `json:"annotationKey"`
+	AttributeKey  string              `json:"attributeKey"`
+	From          *K8sAttributesFrom  `json:"from,omitempty"`
+	FromSources   []K8sAttributesFrom `json:"fromSources,omitempty"`
 }
 
 type K8sAnnotationAttributeInput struct {
-	AnnotationKey string             `json:"annotationKey"`
-	AttributeKey  string             `json:"attributeKey"`
-	From          *K8sAttributesFrom `json:"from,omitempty"`
+	AnnotationKey string              `json:"annotationKey"`
+	AttributeKey  string              `json:"attributeKey"`
+	From          *K8sAttributesFrom  `json:"from,omitempty"`
+	FromSources   []K8sAttributesFrom `json:"fromSources,omitempty"`
 }
 
 type K8sDesiredNamespaceInput struct {
@@ -546,15 +548,17 @@ type K8sDesiredSourceInput struct {
 }
 
 type K8sLabelAttribute struct {
-	LabelKey     string             `json:"labelKey"`
-	AttributeKey string             `json:"attributeKey"`
-	From         *K8sAttributesFrom `json:"from,omitempty"`
+	LabelKey     string              `json:"labelKey"`
+	AttributeKey string              `json:"attributeKey"`
+	From         *K8sAttributesFrom  `json:"from,omitempty"`
+	FromSources  []K8sAttributesFrom `json:"fromSources,omitempty"`
 }
 
 type K8sLabelAttributeInput struct {
-	LabelKey     string             `json:"labelKey"`
-	AttributeKey string             `json:"attributeKey"`
-	From         *K8sAttributesFrom `json:"from,omitempty"`
+	LabelKey     string              `json:"labelKey"`
+	AttributeKey string              `json:"attributeKey"`
+	From         *K8sAttributesFrom  `json:"from,omitempty"`
+	FromSources  []K8sAttributesFrom `json:"fromSources,omitempty"`
 }
 
 type K8sNamespaceID struct {

@@ -227,7 +227,13 @@ func convertK8sAttributesFromInput(details *model.ActionFieldsInput, existingAct
 					LabelKey:     attr.LabelKey,
 					AttributeKey: attr.AttributeKey,
 				}
-				if attr.From != nil {
+				// Support multiple sources: use fromSources if provided, otherwise fall back to from for backward compatibility
+				if len(attr.FromSources) > 0 {
+					config.LabelsAttributes[i].FromSources = make([]actionsv1.K8sAttributeSource, len(attr.FromSources))
+					for j, source := range attr.FromSources {
+						config.LabelsAttributes[i].FromSources[j] = actionsv1.K8sAttributeSource(source)
+					}
+				} else if attr.From != nil {
 					from := actionsv1.K8sAttributeSource(*attr.From)
 					config.LabelsAttributes[i].From = &from
 				}
@@ -241,7 +247,13 @@ func convertK8sAttributesFromInput(details *model.ActionFieldsInput, existingAct
 					AnnotationKey: attr.AnnotationKey,
 					AttributeKey:  attr.AttributeKey,
 				}
-				if attr.From != nil {
+				// Support multiple sources: use fromSources if provided, otherwise fall back to from for backward compatibility
+				if len(attr.FromSources) > 0 {
+					config.AnnotationsAttributes[i].FromSources = make([]actionsv1.K8sAttributeSource, len(attr.FromSources))
+					for j, source := range attr.FromSources {
+						config.AnnotationsAttributes[i].FromSources[j] = actionsv1.K8sAttributeSource(source)
+					}
+				} else if attr.From != nil {
 					from := string(*attr.From)
 					config.AnnotationsAttributes[i].From = &from
 				}
@@ -648,14 +660,24 @@ func convertLabelsAttributesToModel(labelsAttributes []actionsv1.K8sLabelAttribu
 
 	for _, attr := range labelsAttributes {
 		var from *model.K8sAttributesFrom
-		if attr.From != nil {
+		var fromSources []model.K8sAttributesFrom
+
+		// If FromSources is set, use it; otherwise fall back to From for backward compatibility
+		if len(attr.FromSources) > 0 {
+			fromSources = make([]model.K8sAttributesFrom, len(attr.FromSources))
+			for i, source := range attr.FromSources {
+				fromSources[i] = model.K8sAttributesFrom(source)
+			}
+		} else if attr.From != nil {
 			tmp := model.K8sAttributesFrom(*attr.From)
 			from = &tmp
 		}
+
 		result = append(result, &model.K8sLabelAttribute{
 			LabelKey:     attr.LabelKey,
 			AttributeKey: attr.AttributeKey,
 			From:         from,
+			FromSources:  fromSources,
 		})
 	}
 
@@ -667,14 +689,24 @@ func convertAnnotationsAttributesToModel(annotationsAttributes []actionsv1.K8sAn
 
 	for _, attr := range annotationsAttributes {
 		var from *model.K8sAttributesFrom
-		if attr.From != nil {
+		var fromSources []model.K8sAttributesFrom
+
+		// If FromSources is set, use it; otherwise fall back to From for backward compatibility
+		if len(attr.FromSources) > 0 {
+			fromSources = make([]model.K8sAttributesFrom, len(attr.FromSources))
+			for i, source := range attr.FromSources {
+				fromSources[i] = model.K8sAttributesFrom(source)
+			}
+		} else if attr.From != nil {
 			tmp := model.K8sAttributesFrom(*attr.From)
 			from = &tmp
 		}
+
 		result = append(result, &model.K8sAnnotationAttribute{
 			AnnotationKey: attr.AnnotationKey,
 			AttributeKey:  attr.AttributeKey,
 			From:          from,
+			FromSources:   fromSources,
 		})
 	}
 
